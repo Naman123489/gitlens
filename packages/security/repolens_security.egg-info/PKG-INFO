@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: repolens-security
+Version: 0.1.0
+Summary: RepoLens static security analysis: secrets and injection patterns.
+Requires-Python: >=3.11
+Requires-Dist: repolens-shared
