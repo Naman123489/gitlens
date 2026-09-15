@@ -32,12 +32,25 @@ GOOD_PRACTICE_MARKERS: tuple[tuple[str, str, float], ...] = (
 )
 
 
+#: Insecure-code patterns are only meaningful in files that are executed.
+#: Documentation quotes code constantly — a changelog entry describing
+#: ``verify=False`` is prose, not a vulnerability — so pattern scanning is
+#: restricted to these categories. Secret scanning still covers every file,
+#: because a leaked credential in a README is a real leaked credential.
+CODE_CATEGORIES: frozenset[str] = frozenset(
+    {"CANDIDATE_CODE", "TEST_CODE", "CONFIGURATION", "GENERATED_CODE"}
+)
+
+
 @dataclass(slots=True)
 class SecurityInput:
     texts: dict[str, str]
     languages: dict[str, str | None] = field(default_factory=dict)
     all_paths: list[str] = field(default_factory=list)
     has_lock_file: bool = False
+    #: path -> FileCategory value. When empty every file is pattern-scanned,
+    #: which is the correct behaviour for a caller that has no classification.
+    categories: dict[str, str] = field(default_factory=dict)
 
 
 def _dedupe_secrets(findings: list[SecretFinding]) -> list[SecretFinding]:
@@ -68,7 +81,8 @@ def analyze_security(data: SecurityInput) -> AnalyzerResult:
     pattern_findings: list[PatternFinding] = []
     for path, text in data.texts.items():
         secret_findings.extend(scan_text(path, text))
-        pattern_findings.extend(scan_patterns(path, text, data.languages.get(path)))
+        if not data.categories or data.categories.get(path) in CODE_CATEGORIES:
+            pattern_findings.extend(scan_patterns(path, text, data.languages.get(path)))
     secret_findings = _dedupe_secrets(secret_findings)
 
     gitignore = data.texts.get(".gitignore", "")
@@ -104,8 +118,13 @@ def analyze_security(data: SecurityInput) -> AnalyzerResult:
 
     result.score = round(score, 2)
     result.confidence = 0.8 if data.texts else 0.2
+    pattern_scanned = (
+        len(data.texts) if not data.categories
+        else sum(1 for c in data.categories.values() if c in CODE_CATEGORIES)
+    )
     result.metrics = {
         "files_scanned": len(data.texts),
+        "files_pattern_scanned": pattern_scanned,
         "secret_findings": len(secret_findings),
         "pattern_findings": len(pattern_findings),
         "severity_counts": dict(severity_counts),
@@ -193,6 +212,13 @@ def analyze_security(data: SecurityInput) -> AnalyzerResult:
             evidence=tuple(EvidenceDetail(detail=label) for _, label, _ in practices),
         ))
 
+    if data.categories:
+        result.limit(
+            "pattern_scope",
+            f"Insecure-code patterns were checked in {pattern_scanned} code and configuration "
+            f"file(s) of {len(data.texts)} analysed. Documentation is excluded because prose that "
+            "quotes code is not executable. Credential scanning covered every file.",
+        )
     result.limit(
         "security_scope",
         "This is pattern-based static analysis without data-flow or taint tracking. It surfaces code "

@@ -20,6 +20,7 @@ from repolens_shared import AnalyzerResult, Evidence, EvidenceDetail, ScoreCateg
 from repolens_shared.textutils import clamp, scale
 
 from .ast_engine import FileAST
+from .classification import is_test_path
 
 ANALYZER_NAME = "architecture"
 ANALYZER_VERSION = "1.0.0"
@@ -92,6 +93,14 @@ def build_import_graph(asts: list[FileAST]) -> dict[str, set[str]]:
         for depth in range(1, min(4, len(parts)) + 1):
             index["/".join(parts[-depth:])].append(path)
         index[parts[-1]].append(path)
+    # When several files could satisfy an import, prefer the one a reader would
+    # mean: real source over test fixtures, and the shallowest path. Without this
+    # a fixture such as tests/apps/inner/flask.py absorbs every `import flask`.
+    for key, candidates in index.items():
+        index[key] = sorted(
+            dict.fromkeys(candidates),
+            key=lambda p: (is_test_path(p), p.count("/"), len(p), p),
+        )
 
     graph: dict[str, set[str]] = {a.path: set() for a in asts}
     for file_ast in asts:

@@ -17,7 +17,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -89,6 +89,60 @@ def _directory_size(path: Path, cap: int) -> int:
             if total > cap:
                 return total
     return total
+
+
+@dataclass(slots=True)
+class RemoteProbe:
+    """What can be learned about a repository from git alone, with no API call."""
+
+    reachable: bool
+    default_branch: str | None = None
+    head_sha: str | None = None
+    branches: list[str] = field(default_factory=list)
+    error: str | None = None
+
+
+def probe_public_repository(clone_url: str, timeout: int = 30) -> RemoteProbe:
+    """Check that a repository is publicly readable, using ``git ls-remote``.
+
+    This exists so a public repository can be imported when the GitHub REST API
+    is unavailable — no OAuth app configured, an API outage, or a network policy
+    that permits git but not api.github.com. The resulting record carries less
+    metadata (no stars, topics or languages), and that is recorded on the
+    repository rather than filled in with guesses.
+    """
+    if not clone_url.startswith("https://"):
+        return RemoteProbe(reachable=False, error="only https clone URLs are supported")
+    env = {
+        "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "/bin/true", "GIT_CONFIG_NOSYSTEM": "1",
+        "HOME": "/tmp", "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+    }
+    for name in ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy",
+                 "no_proxy", "SSL_CERT_FILE", "GIT_SSL_CAINFO"):
+        if name in os.environ:
+            env[name] = os.environ[name]
+    try:
+        result = subprocess.run(
+            ["git", *_GIT_SAFE_ARGS, "ls-remote", "--symref", clone_url, "HEAD"],
+            capture_output=True, text=True, timeout=timeout, env=env, check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return RemoteProbe(reachable=False, error=f"{type(exc).__name__}: {exc}"[:200])
+    if result.returncode != 0:
+        return RemoteProbe(reachable=False, error=result.stderr.strip()[:300] or "ls-remote failed")
+
+    default_branch = None
+    head_sha = None
+    for line in result.stdout.splitlines():
+        if line.startswith("ref:"):
+            parts = line.split()
+            if len(parts) >= 2:
+                default_branch = parts[1].rsplit("/", 1)[-1]
+        elif "\tHEAD" in line:
+            head_sha = line.split("\t")[0].strip()
+    return RemoteProbe(
+        reachable=True, default_branch=default_branch or "main", head_sha=head_sha,
+    )
 
 
 def clone_repository(

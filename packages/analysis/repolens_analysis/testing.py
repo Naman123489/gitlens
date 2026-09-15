@@ -26,12 +26,14 @@ ANALYZER_VERSION = "1.0.0"
 TEST_FRAMEWORKS: dict[str, tuple[str, ...]] = {
     "pytest": ("import pytest", "from pytest", "@pytest.", "pytest.fixture"),
     "unittest": ("import unittest", "unittest.TestCase"),
-    "jest": ("from '@jest", "jest.mock", "describe(", "test(", "it("),
-    "vitest": ("from 'vitest'", 'from "vitest"', "vi.mock"),
-    "mocha": ("require('mocha')", "mocha"),
-    "testing-library": ("@testing-library/", "render("),
-    "playwright": ("@playwright/test", "playwright"),
-    "cypress": ("cypress", "cy.visit"),
+    # Markers must be specific to the framework. Bare "describe(" / "it(" match
+    # ordinary code in other languages and produced false positives.
+    "jest": ("@jest/globals", "jest.mock", "jest.fn(", "jest.spyOn", "from 'jest'"),
+    "vitest": ("from 'vitest'", 'from "vitest"', "vi.mock", "vi.fn("),
+    "mocha": ("require('mocha')", "from 'mocha'", 'from "mocha"'),
+    "testing-library": ("@testing-library/",),
+    "playwright": ("@playwright/test", "playwright.sync_api", "playwright.async_api"),
+    "cypress": ("cypress/", "cy.visit(", "cy.get("),
     "junit": ("org.junit", "@Test"),
     "go-test": ("testing.T",),
     "rspec": ("RSpec.describe",),

@@ -312,6 +312,7 @@ def run_pipeline(
                 lambda: analyze_security(SecurityInput(
                     texts=context.texts, languages=context.languages,
                     all_paths=context.all_paths, has_lock_file=has_lock,
+                    categories=context.categories,
                 )),
             )
             if security:
