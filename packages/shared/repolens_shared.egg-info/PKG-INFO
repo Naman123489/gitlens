@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: repolens-shared
+Version: 0.1.0
+Summary: Shared primitives for RepoLens analyzers: evidence, scores, enums, versioning.
+Requires-Python: >=3.11
