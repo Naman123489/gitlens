@@ -7,6 +7,7 @@ content.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16,6 +17,27 @@ from .limits import DEFAULT_LIMITS, AnalysisLimits
 
 _SEP = "\x1f"
 _REC = "\x1e"
+
+#: A --numstat line: "<added>\t<removed>\t<path>", where a binary file uses "-".
+_NUMSTAT_RE = re.compile(r"^(\d+|-)\t(\d+|-)\t(.+)$")
+
+
+def _split_message_and_numstat(tail: str) -> tuple[str, list[str]]:
+    """Separate a commit message from the --numstat block that follows it.
+
+    The commit message is free text and may itself contain blank lines, so the
+    split cannot be done on a blank line. Instead the trailing run of lines that
+    parse as numstat records is peeled off the end.
+    """
+    lines = tail.splitlines()
+    index = len(lines)
+    while index > 0:
+        line = lines[index - 1]
+        if not line.strip() or _NUMSTAT_RE.match(line):
+            index -= 1
+            continue
+        break
+    return "\n".join(lines[:index]), [l for l in lines[index:] if _NUMSTAT_RE.match(l)]
 
 
 @dataclass(slots=True)
@@ -82,7 +104,10 @@ def collect_history(
 
     timeout = min(120, limits.clone_timeout_seconds)
     try:
-        fmt = _SEP.join(["%H", "%an", "%ae", "%aI", "%P", "%B"]) + _REC
+        # The record separator leads each record: git appends the --numstat
+        # block *after* the formatted fields, so a trailing separator would
+        # attach each commit's numstat to the following record.
+        fmt = _REC + _SEP.join(["%H", "%an", "%ae", "%aI", "%P", "%B"])
         raw = _run(
             ["log", f"--max-count={limits.max_commits}", f"--pretty=format:{fmt}",
              "--numstat", "--no-color"],
@@ -94,22 +119,14 @@ def collect_history(
         return history
 
     for record in raw.split(_REC):
-        record = record.strip("\n")
         if not record.strip():
             continue
-        head, _, numstat = record.partition("\n")
-        parts = head.split(_SEP)
+        parts = record.split(_SEP)
         if len(parts) < 6:
-            # The message field contains newlines; re-split on the known count.
-            parts = record.split(_SEP)
-            if len(parts) < 6:
-                continue
-            numstat_body = parts[5]
-            message, _, numstat = numstat_body.partition("\n\n")
-        else:
-            message = parts[5]
+            continue
+        message, numstat_lines = _split_message_and_numstat(parts[5])
         try:
-            committed_at = datetime.fromisoformat(parts[3])
+            committed_at = datetime.fromisoformat(parts[3].strip())
         except ValueError:
             continue
         if committed_at.tzinfo is None:
@@ -117,11 +134,11 @@ def collect_history(
 
         insertions = deletions = 0
         files: list[str] = []
-        for line in numstat.splitlines():
-            columns = line.split("\t")
-            if len(columns) != 3:
+        for line in numstat_lines:
+            match = _NUMSTAT_RE.match(line)
+            if match is None:
                 continue
-            added, removed, filename = columns
+            added, removed, filename = match.groups()
             insertions += int(added) if added.isdigit() else 0
             deletions += int(removed) if removed.isdigit() else 0
             if len(files) < 200:
@@ -129,7 +146,8 @@ def collect_history(
 
         history.commits.append(
             Commit(
-                sha=parts[0], author_name=parts[1], author_email=parts[2].lower(),
+                sha=parts[0].strip()[:64], author_name=parts[1][:200],
+                author_email=parts[2].lower()[:320],
                 committed_at=committed_at.astimezone(timezone.utc),
                 message=message.strip(), files_changed=len(files),
                 insertions=insertions, deletions=deletions,

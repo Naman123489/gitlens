@@ -204,8 +204,17 @@ def analyze_similarity(data: SimilarityInput) -> tuple[AnalyzerResult, list[Chun
     external.sort(key=lambda m: -m["similarity"])
 
     max_external = max((m["similarity"] for m in external), default=None)
+    # Tutorial signals are looked for in candidate-authored code and the root
+    # README only. Scanning a project's own documentation would flag any
+    # repository that happens to *contain* a tutorial (Flask's docs, for
+    # example) as tutorial-derived.
+    signal_texts = {
+        path: text for path, text in data.texts.items()
+        if data.categories.get(path) in ("CANDIDATE_CODE", "TEST_CODE", "CONFIGURATION")
+        or (path.lower().startswith("readme") and "/" not in path)
+    }
     tutorial = assess_tutorial_signals(
-        texts=data.texts,
+        texts=signal_texts or data.texts,
         all_paths=list(data.texts),
         external_similarity=max_external,
         corpus_size=len({c.repository_id for c in corpus}),
