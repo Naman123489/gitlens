@@ -131,3 +131,19 @@ These are real and are surfaced in the product wherever they affect a result.
 | A neural embedder | `EmbeddingProvider` in `packages/similarity/embeddings.py` |
 | An analyzer | Return an `AnalyzerResult`; register it in the pipeline and map it to a `ScoreCategory` |
 | A vulnerability feed | A dependency-advisory client; the dependency analyzer already carries the shape for it |
+
+## Deployment notes
+
+**Tree-sitter grammars are downloaded, not bundled.** `tree-sitter-language-pack` fetches each
+grammar on first use into `$XDG_CACHE_HOME/tree-sitter-language-pack/`. Two consequences:
+
+- The Docker image warms the cache at build time, so a running container never downloads a
+  grammar and never needs a writable cache. This is what allows the worker to run with a
+  read-only root filesystem.
+- A non-Docker deployment needs either network access on first parse or a pre-populated cache.
+
+If the grammars are unreachable, the AST engine degrades: files come back `parsed=False` with
+`parser_unavailable=True`, and the metrics analyzer reports *"the source parser failed … this is
+a problem with this deployment, not with the repository"* rather than claiming the repository
+contains no supported source. A silent degradation here would have been the worst outcome: the
+most important analyzer producing nothing while the report read as a judgement on the candidate.

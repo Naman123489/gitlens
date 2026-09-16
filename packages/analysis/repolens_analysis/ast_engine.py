@@ -132,6 +132,10 @@ class FileAST:
     structural_fingerprint: str = ""
     node_histogram: dict[str, int] = field(default_factory=dict)
     parse_error: str | None = None
+    #: True when a grammar was expected but could not be loaded. Distinct from
+    #: an unsupported language: this is an operational fault, not a property of
+    #: the repository, and downstream analyzers must not report it as "no code".
+    parser_unavailable: bool = False
 
     @property
     def total_lines(self) -> int:
@@ -336,9 +340,10 @@ def parse_file(
         parser = _get_parser(language)
         data = text.encode("utf-8", "replace")
         tree = parser.parse(data)
-    except Exception as exc:  # pragma: no cover - grammar load failure
+    except Exception as exc:  # pragma: no cover - grammar load or parse failure
         result = heuristic_file_summary(path, text, language)
         result.parse_error = f"tree-sitter parse failed: {exc}"
+        result.parser_unavailable = True
         return result
 
     file_ast = FileAST(path=path, language=language)

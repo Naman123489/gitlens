@@ -190,3 +190,44 @@ class TestCommitIntent:
         assert good > poor
         assert low_effort == 0.0
         assert poor_low_effort == 1.0
+
+
+class TestParserFaultReporting:
+    """A broken parser must not be reported as 'this repository has no code'."""
+
+    def test_parser_failure_is_distinguished_from_unsupported_language(self, monkeypatch):
+        from repolens_analysis import ast_engine
+
+        def broken_parser(_language):
+            raise RuntimeError("Failed to create cache directory: Read-only file system")
+
+        monkeypatch.setattr(ast_engine, "_get_parser", broken_parser)
+        result = ast_engine.parse_file("a.py", "def f():\n    return 1\n", "python")
+
+        assert result.parsed is False
+        assert result.parser_unavailable is True
+        assert "Read-only file system" in (result.parse_error or "")
+
+    def test_unsupported_language_is_not_flagged_as_a_parser_fault(self):
+        result = parse_file("main.go", "package main\n", "go")
+        assert result.parsed is False
+        assert result.parser_unavailable is False
+
+    def test_metrics_blames_the_deployment_not_the_repository(self, monkeypatch):
+        from repolens_analysis import ast_engine
+        from repolens_analysis.metrics import MetricsInput, analyze_metrics
+
+        monkeypatch.setattr(
+            ast_engine, "_get_parser",
+            lambda _language: (_ for _ in ()).throw(RuntimeError("grammar unavailable")),
+        )
+        source = "def f():\n    return 1\n"
+        asts = [ast_engine.parse_file(f"module_{index}.py", source, "python") for index in range(3)]
+        result = analyze_metrics(MetricsInput(asts=asts, texts={a.path: source for a in asts}))
+
+        assert result.score is None
+        assert result.metrics["parser_failures"] == 3
+        limitation = " ".join(item.detail for item in result.limitations)
+        assert "problem with this deployment" in limitation
+        assert "no source in a supported language" not in limitation
+        assert any("operational_fault" in item.tags for item in result.evidence)

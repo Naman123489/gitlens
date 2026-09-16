@@ -12,10 +12,10 @@ import base64
 import hashlib
 import secrets
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -29,7 +29,12 @@ class Settings(BaseSettings):
     debug: bool = False
     api_prefix: str = "/api/v1"
     frontend_url: str = "http://localhost:3000"
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    #: Accepts a comma-separated list or a JSON array. `NoDecode` is required
+    #: because pydantic-settings would otherwise try to JSON-decode the value
+    #: before the validator below runs, so a bare URL would fail to parse.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:3000"]
+    )
 
     # -- database ------------------------------------------------------------
     database_url: str = "postgresql+psycopg://repolens:repolens@localhost:5432/repolens"
@@ -86,7 +91,15 @@ class Settings(BaseSettings):
     @classmethod
     def _split_origins(cls, value: object) -> object:
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            text = value.strip()
+            if text.startswith("["):
+                import json
+
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    pass
+            return [origin.strip() for origin in text.split(",") if origin.strip()]
         return value
 
     @property

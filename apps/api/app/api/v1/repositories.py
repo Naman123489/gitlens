@@ -156,9 +156,10 @@ async def import_repository(
             remote = await client.get_repository(owner, name)
             languages = await client.get_languages(owner, name)
             readme = await client.get_readme(owner, name)
-    except RateLimitedError as exc:
-        raise ServiceUnavailableError(str(exc)) from exc
-    except GitHubError as exc:
+    except (RateLimitedError, GitHubError) as exc:
+        # A rate limit is not a reason to refuse a public repository: cloning
+        # uses no API quota, so the fallback below still works and the analysis
+        # is unaffected. Only the metadata is lost, and that is recorded.
         api_error = str(exc)
 
     if remote is None:

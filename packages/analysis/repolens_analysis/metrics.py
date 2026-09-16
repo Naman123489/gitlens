@@ -159,6 +159,7 @@ def analyze_metrics(data: MetricsInput) -> AnalyzerResult:
     unparsed = [a for a in data.asts if not a.parsed]
 
     if not functions and not classes:
+        broken = [a for a in data.asts if a.parser_unavailable]
         result.score = None
         result.confidence = 0.2
         result.partial = True
@@ -166,22 +167,49 @@ def analyze_metrics(data: MetricsInput) -> AnalyzerResult:
             "function_count": 0,
             "class_count": 0,
             "analysed_files": len(data.asts),
+            "parser_failures": len(broken),
         }
-        result.limit(
-            "code_metrics",
-            "No functions or classes could be extracted, so quality metrics were not computed. "
-            "This happens when the repository contains no source in a supported language.",
-        )
-        result.add(
-            Evidence(
-                category=ScoreCategory.TECHNICAL_QUALITY,
-                claim="No analysable source entities were found in this repository",
-                severity=Severity.INFO,
-                confidence=0.9,
-                supports="neutral",
-                evidence=(EvidenceDetail(detail=f"{len(data.asts)} files inspected"),),
+        if broken:
+            # An operational fault, not a property of the repository. Reporting
+            # it as "no supported source" would blame the candidate's code for a
+            # broken deployment.
+            reason = broken[0].parse_error or "the language parser could not be loaded"
+            result.limit(
+                "parser_unavailable",
+                f"The source parser failed on {len(broken)} of {len(data.asts)} file(s), so quality "
+                f"metrics could not be computed. This is a problem with this deployment, not with "
+                f"the repository. First failure: {reason}",
             )
-        )
+            result.add(
+                Evidence(
+                    category=ScoreCategory.TECHNICAL_QUALITY,
+                    claim="Code quality could not be measured because the source parser is unavailable",
+                    severity=Severity.HIGH,
+                    confidence=0.95,
+                    supports="neutral",
+                    tags=("operational_fault",),
+                    evidence=(
+                        EvidenceDetail(detail=f"{len(broken)} file(s) failed to parse"),
+                        EvidenceDetail(detail=reason[:300]),
+                    ),
+                )
+            )
+        else:
+            result.limit(
+                "code_metrics",
+                "No functions or classes could be extracted, so quality metrics were not computed. "
+                "This happens when the repository contains no source in a supported language.",
+            )
+            result.add(
+                Evidence(
+                    category=ScoreCategory.TECHNICAL_QUALITY,
+                    claim="No analysable source entities were found in this repository",
+                    severity=Severity.INFO,
+                    confidence=0.9,
+                    supports="neutral",
+                    evidence=(EvidenceDetail(detail=f"{len(data.asts)} files inspected"),),
+                )
+            )
         return result
 
     complexities = [e.complexity for e in functions] or [1]

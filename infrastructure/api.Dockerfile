@@ -24,6 +24,15 @@ RUN pip install \
       ./packages/similarity \
       ./packages/scoring
 
+# Warm the tree-sitter grammar cache at build time. Without this the analyzer
+# tries to populate it on first parse, which fails on the read-only root
+# filesystem the worker runs with — silently degrading every AST metric.
+ENV XDG_CACHE_HOME=/srv/.cache
+RUN python -c "\
+from tree_sitter_language_pack import get_parser;\
+[get_parser(name) for name in ('python','javascript','typescript','tsx','java','c','cpp')];\
+print('tree-sitter grammars warmed')"
+
 COPY apps/api/pyproject.toml /srv/apps/api/pyproject.toml
 COPY apps/api/ /srv/apps/api/
 RUN pip install /srv/apps/api
