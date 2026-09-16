@@ -114,15 +114,18 @@ export function CategoryScoreRow({
   unavailableReason,
   onClick,
   active,
+  showConfidence = true,
 }: {
   category: string;
   score: number | null;
-  weight: number;
+  /** Policy weight. Omit for sub-metrics, which are not policy-weighted. */
+  weight?: number;
   confidence: number;
   available: boolean;
   unavailableReason?: string | null;
   onClick?: () => void;
   active?: boolean;
+  showConfidence?: boolean;
 }) {
   const band = scoreBand(available ? score : null);
   return (
@@ -139,7 +142,11 @@ export function CategoryScoreRow({
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-sm font-medium">{titleCase(category)}</span>
         <span className="flex items-baseline gap-2">
-          <span className="text-[11px] text-muted-foreground">{Math.round(weight * 100)}% weight</span>
+          {weight ? (
+            <span className="text-[11px] text-muted-foreground">
+              {Math.round(weight * 100)}% weight
+            </span>
+          ) : null}
           <span className={cn("text-sm font-semibold tabular-nums", SCORE_BAND_TEXT[band])}>
             {available ? formatScore(score) : "n/a"}
           </span>
@@ -151,11 +158,13 @@ export function CategoryScoreRow({
         indicatorClassName={SCORE_BAND_BG[band]}
         label={`${titleCase(category)} score`}
       />
-      <p className="mt-1.5 text-[11px] text-muted-foreground">
-        {available
-          ? `${Math.round(confidence * 100)}% confidence`
-          : (unavailableReason ?? "Not available for this repository.")}
-      </p>
+      {available && !showConfidence ? null : (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          {available
+            ? `${Math.round(confidence * 100)}% confidence`
+            : (unavailableReason ?? "Not available for this repository.")}
+        </p>
+      )}
     </button>
   );
 }

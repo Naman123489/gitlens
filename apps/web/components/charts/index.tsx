@@ -60,6 +60,7 @@ export function DnaRadar({ data }: { data: Record<string, number> }) {
           stroke="hsl(217 91% 60%)"
           fill="hsl(217 91% 60%)"
           fillOpacity={0.25}
+          isAnimationActive={false}
         />
         <RechartsTooltip content={<ChartTooltip />} />
       </RadarChart>
@@ -84,7 +85,7 @@ export function CategoryBars({
         <XAxis type="number" domain={[0, 100]} tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="category" width={132} tick={AXIS} axisLine={false} tickLine={false} />
         <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: "hsl(223 12% 16% / 0.5)" }} />
-        <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={14}>
+        <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={14} isAnimationActive={false}>
           {points.map((point) => (
             <Cell key={point.category} fill={SCORE_BAND_HEX[scoreBand(point.score)]} />
           ))}
@@ -121,6 +122,7 @@ export function ActivityTimeline({
           stroke="hsl(217 91% 60%)"
           fill="url(#commitFill)"
           strokeWidth={2}
+          isAnimationActive={false}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -137,7 +139,7 @@ export function ReadinessBars({ data }: { data: { role: string; readiness: numbe
         <XAxis type="number" domain={[0, 100]} tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="role" width={140} tick={AXIS} axisLine={false} tickLine={false} />
         <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: "hsl(223 12% 16% / 0.5)" }} />
-        <Bar dataKey="readiness" name="Readiness" radius={[0, 4, 4, 0]} barSize={16}>
+        <Bar dataKey="readiness" name="Readiness" radius={[0, 4, 4, 0]} barSize={16} isAnimationActive={false}>
           {data.map((point) => (
             <Cell key={point.role} fill={SCORE_BAND_HEX[scoreBand(point.readiness)]} />
           ))}

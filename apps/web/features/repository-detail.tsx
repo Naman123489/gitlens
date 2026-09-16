@@ -270,6 +270,7 @@ function AnalysisView({ analysis, repository }: { analysis: Analysis; repository
               ["Documented functions", codeMetrics.documented_function_ratio !== undefined ? `${(codeMetrics.documented_function_ratio * 100).toFixed(0)}%` : undefined],
             ]}
             subScores={codeMetrics.sub_scores}
+            subWeights={codeMetrics.weights}
             evidence={byCategory("technical_quality")}
           />
         </TabsContent>
@@ -289,6 +290,7 @@ function AnalysisView({ analysis, repository }: { analysis: Analysis; repository
               ["Coverage configured", testing.coverage_tracking_configured ? "yes" : "no"],
             ]}
             subScores={testing.sub_scores}
+            subWeights={testing.weights}
             evidence={byCategory("testing")}
           />
         </TabsContent>
@@ -308,6 +310,7 @@ function AnalysisView({ analysis, repository }: { analysis: Analysis; repository
               ["Lock file", (dependencies.lock_files ?? []).length ? "committed" : "missing"],
             ]}
             subScores={architecture.sub_scores}
+            subWeights={architecture.weights}
             evidence={byCategory("architecture")}
           />
         </TabsContent>
@@ -440,6 +443,7 @@ function AnalysisView({ analysis, repository }: { analysis: Analysis; repository
                 ["Releases", (gitHistory.tags ?? []).length],
               ]}
               subScores={gitHistory.sub_scores}
+            subWeights={gitHistory.weights}
               evidence={byCategory("git_engineering")}
             />
           </div>
@@ -521,23 +525,42 @@ function AnalysisView({ analysis, repository }: { analysis: Analysis; repository
               extra={
                 ownership.factors ? (
                   <div className="space-y-1.5">
-                    {(ownership.factors as any[]).map((factor) => (
-                      <div key={factor.id} className="flex items-center gap-3">
-                        <span className="w-56 shrink-0 text-xs">{factor.label}</span>
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                          <div
-                            className={cn(
-                              "h-full rounded-full",
-                              factor.value >= 0.6 ? "bg-success" : factor.value >= 0.3 ? "bg-warning" : "bg-danger",
-                            )}
-                            style={{ width: `${Math.round(factor.value * 100)}%` }}
-                          />
+                    {(ownership.factors as any[]).map((factor) => {
+                      // A factor that could not be assessed is excluded from the
+                      // score entirely. Rendering it as a 0% bar would read as a
+                      // negative finding, which is exactly what the scoring
+                      // engine refuses to do.
+                      const unavailable = (
+                        (ownership.unavailable_factors as string[]) ?? []
+                      ).includes(factor.id);
+                      return (
+                        <div key={factor.id} className="flex items-center gap-3">
+                          <span className="w-56 shrink-0 text-xs">{factor.label}</span>
+                          {unavailable ? (
+                            <span className="flex-1 text-[11px] italic text-muted-foreground">
+                              not assessed — excluded from the score
+                            </span>
+                          ) : (
+                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full",
+                                  factor.value >= 0.6
+                                    ? "bg-success"
+                                    : factor.value >= 0.3
+                                      ? "bg-warning"
+                                      : "bg-danger",
+                                )}
+                                style={{ width: `${Math.round(factor.value * 100)}%` }}
+                              />
+                            </div>
+                          )}
+                          <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                            {unavailable ? "—" : `${Math.round(factor.value * 100)}%`}
+                          </span>
                         </div>
-                        <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-                          {Math.round(factor.value * 100)}%
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : null
               }
@@ -650,6 +673,7 @@ function DimensionPanel({
   scoreSuffix = "",
   metrics,
   subScores,
+  subWeights,
   evidence,
   extra,
 }: {
@@ -658,6 +682,8 @@ function DimensionPanel({
   scoreSuffix?: string;
   metrics?: [string, unknown][];
   subScores?: Record<string, number>;
+  /** Each sub-metric's weight *within this dimension*, from the analyzer. */
+  subWeights?: Record<string, number>;
   evidence: Evidence[];
   extra?: React.ReactNode;
 }) {
@@ -692,9 +718,10 @@ function DimensionPanel({
                   key={key}
                   category={key}
                   score={value}
-                  weight={0}
+                  weight={subWeights?.[key]}
                   confidence={1}
                   available
+                  showConfidence={false}
                 />
               ))}
             </div>
