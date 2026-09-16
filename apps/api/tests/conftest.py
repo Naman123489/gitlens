@@ -36,15 +36,27 @@ def database_available() -> bool:
 
 @pytest.fixture(scope="session")
 def db_engine(database_available: bool):
-    if not database_available:
-        pytest.skip("PostgreSQL is not reachable; database tests are skipped")
+    """Build the schema directly from the models, for speed.
+
+    `alembic_version` is cleared alongside the tables. Without that, a test
+    database that was previously migrated is left claiming to be at head while
+    its tables are gone, and the next `alembic downgrade` fails on indexes that
+    no longer exist.
+    """
+    from sqlalchemy import text
+
     from app.db.session import engine
     from app.models import Base
 
-    Base.metadata.drop_all(engine)
+    def reset() -> None:
+        Base.metadata.drop_all(engine)
+        with engine.begin() as connection:
+            connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+
+    reset()
     Base.metadata.create_all(engine)
     yield engine
-    Base.metadata.drop_all(engine)
+    reset()
 
 
 @pytest.fixture
