@@ -1,0 +1,3 @@
+repolens-shared
+tree-sitter>=0.23
+tree-sitter-language-pack>=0.7

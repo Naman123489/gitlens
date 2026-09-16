@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: repolens-analysis
+Version: 0.1.0
+Summary: RepoLens repository analysis engine: classification, AST, metrics, history.
+Requires-Python: >=3.11
+Requires-Dist: repolens-shared
+Requires-Dist: tree-sitter>=0.23
+Requires-Dist: tree-sitter-language-pack>=0.7

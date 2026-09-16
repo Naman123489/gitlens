@@ -1,0 +1,13 @@
+[project]
+name = "repolens-similarity"
+version = "0.1.0"
+description = "RepoLens code similarity: fingerprints, structural comparison, embeddings."
+requires-python = ">=3.11"
+dependencies = ["repolens-shared", "repolens-analysis"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["repolens_similarity*"]
