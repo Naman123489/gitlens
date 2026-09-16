@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Dark-first engineering-tool palette. Low-chroma surfaces, one accent, and
+ * semantic colours reserved for status so a green badge always means the same
+ * thing wherever it appears.
+ */
+@layer base {
+  :root {
+    --background: 225 14% 7%;
+    --foreground: 220 14% 96%;
+    --surface: 224 14% 10%;
+    --surface-raised: 224 13% 13%;
+    --border: 223 12% 20%;
+    --input: 223 12% 18%;
+    --ring: 217 91% 60%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --muted: 223 12% 16%;
+    --muted-foreground: 218 11% 65%;
+    --accent: 263 70% 66%;
+    --accent-foreground: 220 14% 96%;
+    --success: 152 60% 48%;
+    --warning: 38 92% 58%;
+    --danger: 0 72% 58%;
+    --info: 199 89% 56%;
+    --radius: 0.625rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::selection {
+    @apply bg-primary/30;
+  }
+
+  /* Scrollbars that do not fight the dark surface. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: hsl(var(--background)); }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 6px;
+    border: 2px solid hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border border-border bg-surface;
+  }
+
+  .panel-raised {
+    @apply rounded-lg border border-border bg-surface-raised;
+  }
+
+  /* Grid backdrop used on the landing hero. Subtle by design. */
+  .grid-backdrop {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.35) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.35) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 55%, transparent 100%);
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-md bg-muted;
+  }
+  .skeleton::after {
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/5 to-transparent;
+    content: "";
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
