@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -10,6 +11,42 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.schemas.common import ORMModel
 
 ROLES = ("STUDENT", "INTERVIEWER", "ADMIN")
+
+#: Passwords whose base word is guessed first in any credential-stuffing list.
+#: Checked after stripping trailing digits and common leetspeak, so `password123`
+#: and `p4ssw0rd!` are rejected along with `password`.
+_COMMON_BASES: frozenset[str] = frozenset(
+    {
+        "password", "passwd", "letmein", "changeme", "welcome", "qwerty", "qwertyuiop",
+        "abc", "abcdef", "iloveyou", "admin", "administrator", "root", "login",
+        "monkey", "dragon", "football", "baseball", "sunshine", "princess", "shadow",
+        "master", "superman", "trustno", "starwars", "whatever", "freedom", "secret",
+        "test", "testing", "demo", "sample", "default", "user", "guest", "repolens",
+    }
+)
+
+_LEET = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"})
+
+_TRAILING_NOISE = re.compile(r"[^a-z]+$")
+_LEADING_NOISE = re.compile(r"^[^a-z]+")
+
+
+def _base_words(password: str) -> set[str]:
+    """Candidate base words a password is built from.
+
+    Trailing and leading digits and punctuation are stripped *before* leetspeak
+    is folded, because folding first turns `password123` into `passwordize` and
+    hides the base word entirely. Both the folded and unfolded forms are
+    returned, so `p4ssw0rd` and `password99` are both caught.
+    """
+    lowered = password.lower()
+    candidates: set[str] = set()
+    for variant in (lowered, lowered.translate(_LEET)):
+        trimmed = _TRAILING_NOISE.sub("", _LEADING_NOISE.sub("", variant))
+        if trimmed:
+            candidates.add(trimmed)
+            candidates.add(re.sub(r"[^a-z]", "", trimmed))
+    return {candidate for candidate in candidates if candidate}
 
 
 class RegisterRequest(BaseModel):
@@ -25,8 +62,16 @@ class RegisterRequest(BaseModel):
     def _password_strength(cls, value: str) -> str:
         if value.isdigit() or value.isalpha():
             raise ValueError("password must mix letters with numbers or symbols")
-        if value.lower() in ("password12", "letmein123", "changeme123"):
-            raise ValueError("password is too common")
+        if len(set(value)) < 5:
+            raise ValueError("password repeats too few distinct characters")
+        for base in _base_words(value):
+            if base in _COMMON_BASES or any(
+                base.startswith(common) and len(base) - len(common) <= 3
+                for common in _COMMON_BASES
+            ):
+                raise ValueError(
+                    "password is based on a commonly guessed word; choose something unrelated to it"
+                )
         return value
 
 

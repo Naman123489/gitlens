@@ -13,6 +13,7 @@ verified and architecturally owned — is what scores highly.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -121,15 +122,24 @@ class FactorOutcome:
         }
 
 
+def _log_scale(value: float, full_marks_at: float) -> float:
+    """Map a count onto 0..1 with diminishing returns, reaching 1 at ``full_marks_at``."""
+    if value <= 0:
+        return 0.0
+    return clamp(math.log1p(value) / math.log1p(full_marks_at), 0.0, 1.0)
+
+
 def _ownership_factors(data: OwnershipInput) -> list[FactorOutcome]:
     history = data.history
     outcomes: list[FactorOutcome] = []
 
-    # Incremental development
+    # Incremental development. Logarithmic, because the difference between 2 and
+    # 10 commits says far more about how a project was built than the difference
+    # between 32 and 40.
     if history.commit_count:
         value = (
-            0.55 * clamp(scale(float(history.commit_count), 1.0, 40.0), 0, 100) / 100
-            + 0.45 * clamp(scale(float(history.active_days), 1.0, 15.0), 0, 100) / 100
+            0.55 * _log_scale(history.commit_count, full_marks_at=40)
+            + 0.45 * _log_scale(history.active_days, full_marks_at=15)
         )
         observations = [
             f"{history.commit_count} commits across {history.active_days} active day(s)",
@@ -355,15 +365,22 @@ def analyze_ai_utilization(data: OwnershipInput, ownership_confidence: float) ->
          f"{data.import_cycles} import cycle(s)"],
     ))
 
-    # Understanding
-    understanding = (data.documentation_score or 0.0) / 100.0 * 0.6
+    # Understanding. With a verification session, documentation and the session
+    # share the factor. Without one, documentation carries it alone and is
+    # renormalised — otherwise excellent documentation could never exceed 60% of
+    # a factor it is the only available evidence for.
+    documentation = (data.documentation_score or 0.0) / 100.0
     if data.verification_score is not None:
-        understanding += data.verification_score / 100.0 * 0.4
-        understanding_notes = [f"technical verification score {data.verification_score:.0f}/100"]
+        understanding = documentation * 0.6 + (data.verification_score / 100.0) * 0.4
+        understanding_notes = [
+            f"technical verification score {data.verification_score:.0f}/100",
+            f"documentation score {data.documentation_score:.0f}" if data.documentation_score
+            else "no documentation score available",
+        ]
     else:
-        understanding = understanding / 0.6 * 0.6  # documentation carries it alone
-        understanding_notes = ["no technical verification session completed; "
-                               "understanding inferred from documentation only"]
+        understanding = documentation
+        understanding_notes = ["no technical verification session completed; understanding is "
+                               "inferred from project documentation alone, which is weaker evidence"]
     outcomes.append(FactorOutcome(UTILIZATION_FACTORS[4], clamp(understanding, 0, 1), understanding_notes))
 
     # Dependency discipline

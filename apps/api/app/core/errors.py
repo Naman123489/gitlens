@@ -65,6 +65,26 @@ class ServiceUnavailableError(AppError):
     code = "service_unavailable"
 
 
+def _serialisable_errors(exc: RequestValidationError) -> list[dict[str, Any]]:
+    """Reduce Pydantic errors to JSON-safe records.
+
+    A custom field validator puts the raw exception object in ``ctx``, which is
+    not JSON-serialisable. Rendering it directly turns every custom validation
+    failure into a 500, so only the fields a client needs are kept. The input
+    value is deliberately dropped: it may be a password.
+    """
+    errors: list[dict[str, Any]] = []
+    for error in exc.errors()[:10]:
+        errors.append(
+            {
+                "field": ".".join(str(part) for part in error.get("loc", ()) if part != "body"),
+                "message": str(error.get("msg", "invalid value")),
+                "type": str(error.get("type", "value_error")),
+            }
+        )
+    return errors
+
+
 def _body(code: str, message: str, detail: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "error": {
@@ -88,7 +108,7 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=422,
             content=_body("validation_error", "The request payload is invalid.",
-                          {"errors": exc.errors()[:10]}),
+                          {"errors": _serialisable_errors(exc)}),
         )
 
     @app.exception_handler(IntegrityError)

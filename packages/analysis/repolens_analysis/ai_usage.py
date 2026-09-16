@@ -425,8 +425,9 @@ def analyze_ai_usage(
 
     result.limit(
         "ai_detection",
-        "AI-generated code cannot be conclusively identified from source code alone. Every signal "
-        "used here has legitimate non-AI explanations, which are listed alongside each signal.",
+        "This figure is a probabilistic estimate, not a detection. AI-generated code cannot be "
+        "conclusively identified from source code alone, and every signal used here has legitimate "
+        "non-AI explanations, which are listed alongside each signal.",
     )
     result.limit(
         "not_a_judgement",

@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from sqlalchemy.orm import Session
 
@@ -53,7 +53,7 @@ from repolens_analysis import (
     walk_repository,
 )
 from repolens_analysis.limits import AnalysisLimits, LimitExceeded
-from repolens_github import FetchError, clone_repository
+from repolens_github import FetchError, FetchedRepository, clone_repository
 from repolens_security import SecurityInput, analyze_security
 from repolens_shared import AnalyzerResult, ScoreCategory
 from repolens_shared.versioning import ANALYZER_VERSION
@@ -111,6 +111,32 @@ ANALYZER_CATEGORY: dict[str, ScoreCategory] = {
 ProgressCallback = Callable[[str, float, str], None]
 
 
+class SourceFetcher(Protocol):
+    """How the pipeline obtains a repository's working tree.
+
+    Production uses :func:`clone_source`, which refuses anything but an https
+    remote. Keeping acquisition behind this protocol is what lets tests analyse a
+    local fixture, and what will let GitLab or a local-path provider be added,
+    without weakening the guard on the default path.
+    """
+
+    def __call__(
+        self, repository: Repository, token: str | None, limits: AnalysisLimits
+    ) -> FetchedRepository: ...
+
+
+def clone_source(
+    repository: Repository, token: str | None, limits: AnalysisLimits
+) -> FetchedRepository:
+    """Default fetcher: a shallow, hook-free https clone."""
+    if not repository.clone_url:
+        raise FetchError("repository has no clone URL")
+    return clone_repository(
+        repository.clone_url, token=token, branch=repository.default_branch or None,
+        timeout=limits.clone_timeout_seconds, max_bytes=limits.max_repository_bytes,
+    )
+
+
 @dataclass(slots=True)
 class PipelineOutcome:
     analysis: RepositoryAnalysis
@@ -162,6 +188,7 @@ def run_pipeline(
     progress: ProgressCallback | None = None,
     analysis_job_id: str | None = None,
     corpus_enabled: bool = True,
+    fetcher: SourceFetcher | None = None,
 ) -> PipelineOutcome:
     """Analyse one repository end to end and persist the result."""
     settings = get_settings()
@@ -205,12 +232,7 @@ def run_pipeline(
 
     # -- 1. acquire ----------------------------------------------------------
     report("ingestion", 0.0, "Repository ingestion")
-    if not repository.clone_url:
-        raise FetchError("repository has no clone URL")
-    fetched = clone_repository(
-        repository.clone_url, token=access_token, branch=repository.default_branch or None,
-        timeout=limits.clone_timeout_seconds, max_bytes=limits.max_repository_bytes,
-    )
+    fetched = (fetcher or clone_source)(repository, access_token, limits)
 
     try:
         context = _Context()
